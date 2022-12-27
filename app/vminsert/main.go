@@ -12,6 +12,7 @@ import (
 	vminsertCommon "github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/common"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/csvimport"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/datadog"
+	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/faststats"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/graphite"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/influx"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/native"
@@ -26,6 +27,7 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/bytesutil"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/httpserver"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/influxutils"
+	faststatsserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/faststats"
 	graphiteserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/graphite"
 	influxserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/influx"
 	opentsdbserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/opentsdb"
@@ -58,6 +60,9 @@ var (
 		"See also -opentsdbHTTPListenAddr.useProxyProtocol")
 	opentsdbHTTPUseProxyProtocol = flag.Bool("opentsdbHTTPListenAddr.useProxyProtocol", false, "Whether to use proxy protocol for connections accepted "+
 		"at -opentsdbHTTPListenAddr . See https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt")
+	fastStatsUseProxyProtocol = flag.Bool("fastStatsListenAddr.useProxyProtocol", false, "Whether to use proxy protocol for connections accepted "+
+		"at -fastStatsListenAddr . See https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt")
+	fastStatsListenAddr    = flag.String("fastStatsListenAddr", "", "TCP address to listen for FastStats. Usually :5853 must be set. Doesn't work if empty")
 	configAuthKey          = flag.String("configAuthKey", "", "Authorization key for accessing /config page. It must be passed via authKey query arg")
 	maxLabelsPerTimeseries = flag.Int("maxLabelsPerTimeseries", 30, "The maximum number of labels accepted per time series. Superfluous labels are dropped. In this case the vm_metrics_with_dropped_labels_total metric at /metrics page is incremented")
 	maxLabelValueLen       = flag.Int("maxLabelValueLen", 16*1024, "The maximum length of label values in the accepted time series. Longer label values are truncated. In this case the vm_too_long_label_values_total metric at /metrics page is incremented")
@@ -68,6 +73,7 @@ var (
 	influxServer       *influxserver.Server
 	opentsdbServer     *opentsdbserver.Server
 	opentsdbhttpServer *opentsdbhttpserver.Server
+	fastStatsServer    *faststatsserver.Server
 )
 
 //go:embed static
@@ -94,6 +100,10 @@ func Init() {
 	if len(*opentsdbHTTPListenAddr) > 0 {
 		opentsdbhttpServer = opentsdbhttpserver.MustStart(*opentsdbHTTPListenAddr, *opentsdbHTTPUseProxyProtocol, opentsdbhttp.InsertHandler)
 	}
+	if len(*fastStatsListenAddr) > 0 {
+		fastStatsServer = faststatsserver.MustStart(*fastStatsListenAddr, *fastStatsUseProxyProtocol, faststats.InsertHandler)
+	}
+
 	promscrape.Init(func(at *auth.Token, wr *prompbmarshal.WriteRequest) {
 		prompush.Push(wr)
 	})
@@ -113,6 +123,9 @@ func Stop() {
 	}
 	if len(*opentsdbHTTPListenAddr) > 0 {
 		opentsdbhttpServer.MustStop()
+	}
+	if len(*fastStatsListenAddr) > 0 {
+		fastStatsServer.MustStop()
 	}
 	common.StopUnmarshalWorkers()
 	vminsertCommon.MustStopStreamAggr()

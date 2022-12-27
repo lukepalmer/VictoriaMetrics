@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="generated"
+                   id="0"
+                   version="0"
+                   description="Time Machine Publishing Protocol"
+                   byteOrder="littleEndian">
+  <types>
+    <composite name="messageHeader" description="Message identifiers and length of message root.">
+      <type name="blockLength" primitiveType="uint16"/>
+      <type name="templateId" primitiveType="uint16"/>
+      <type name="schemaId" primitiveType="uint16"/>
+      <type name="version" primitiveType="uint16"/>
+    </composite>
+    <composite name="groupSizeEncoding" description="Repeating group dimensions.">
+      <type name="numInGroup" primitiveType="uint16"/>
+      <type name="blockLength" primitiveType="uint16"/>
+    </composite>
+    <composite name="varAsciiEncoding" description="Variable length ASCII String.">
+      <type name="length" primitiveType="uint16"/>
+      <type name="varData" primitiveType="uint8" characterEncoding="ASCII"/>
+    </composite>
+    <type name="TimeseriesId" primitiveType="uint32"/>
+    <type name="TimeEpochNs" primitiveType="int64"/>
+    <type name="Value" primitiveType="double"/> 
+  </types>
+  <sbe:message name="TimeSeriesDefinition" id="0" description="Definition of a Time Series">
+    <field name="Id" id="0" type="TimeseriesId"/>     
+    <group name="Labels" id="1" dimensionType="groupSizeEncoding">
+      <data name="Key" id="0" type="varAsciiEncoding"/> 
+      <data name="Value" id="1" type="varAsciiEncoding"/>
+    </group>
+    <data name="Name" id="2" type="varAsciiEncoding"/>   
+  </sbe:message>
+  <sbe:message name="Data" id="1" description="Data Points">
+    <group name="Points" id="0" dimensionType="groupSizeEncoding">
+      <field name="TimeseriesId" id="0" type="TimeseriesId"/> 
+      <field name="TimeEpochNs" id="1" type="TimeEpochNs"/>
+      <field name="Value" id="2" type="Value"/>
+    </group>
+  </sbe:message>
+</sbe:messageSchema>
