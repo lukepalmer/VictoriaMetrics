@@ -40,6 +40,7 @@ func ParseStream(at *auth.Token, reader io.Reader, callback func(data generated.
 	ctx := getStreamContext()
 	ctx.reader = bufio.NewReaderSize(reader, 64*1024)
 	ctx.atLocal = ctx.ic.GetLocalAuthToken(at)
+	ctx.atLocal.AccountID = 1 // TODO: hack
 	ctx.callback = callback
 	ctx.ic.Reset()
 	defer putStreamContext(ctx)
