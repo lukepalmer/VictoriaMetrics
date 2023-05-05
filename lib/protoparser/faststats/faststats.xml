@@ -3,12 +3,12 @@
                    package="generated"
                    id="118"
                    version="0"
-                   description="Time Machine Publishing Protocol"
+                   description="FastStats Protocol"
                    byteOrder="littleEndian">
   <types>
     <composite name="messageHeader" description="Message identifiers and length of message root.">
       <type name="blockLength" primitiveType="uint16"/>
-      <type name="templateId" primitiveType="uint16"/>      
+      <type name="templateId" primitiveType="uint16"/>
       <type name="schemaId" primitiveType="uint16"/>
       <type name="version" primitiveType="uint16"/>
     </composite>
@@ -30,7 +30,7 @@
   </types>
 
   <sbe:message name="TimeSeriesDefinition" id="0" description="Definition of a Time Series">
-    <field name="id" id="0" type="TimeseriesId"/>
+    <field name="id" id="0" type="timeseriesId"/>
     <group name="labels" id="1" dimensionType="groupSizeEncoding">
       <data name="key" id="0" type="varAsciiEncoding"/>
       <data name="value" id="1" type="varStringEncoding"/>
@@ -40,9 +40,10 @@
 
   <sbe:message name="Data" id="1" description="Data Points">
     <group name="points" id="0" dimensionType="groupSizeEncoding">
-      <field name="timeseriesId" id="0" type="TimeseriesId"/>
-      <field name="timeEpochNs" id="1" type="TimeEpochNs"/>
+      <field name="timeseriesId" id="0" type="timeseriesId"/>
+      <field name="timeEpochNs" id="1" type="timeEpochNs"/>
       <field name="value" id="2" type="statValue"/>
     </group>
   </sbe:message>
 </sbe:messageSchema>
+

@@ -3,10 +3,12 @@
 package generated
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
+	"unicode/utf8"
 )
 
 type TimeSeriesDefinition struct {
@@ -183,10 +185,8 @@ func (t *TimeSeriesDefinitionLabels) RangeCheck(actingVersion uint16, schemaVers
 			return fmt.Errorf("t.Key[%d]=%d failed ASCII validation", idx, ch)
 		}
 	}
-	for idx, ch := range t.Value {
-		if ch > 127 {
-			return fmt.Errorf("t.Value[%d]=%d failed ASCII validation", idx, ch)
-		}
+	if !utf8.Valid(t.Value[:]) {
+		return errors.New("t.Value failed UTF-8 validation")
 	}
 	return nil
 }
@@ -204,7 +204,7 @@ func (*TimeSeriesDefinition) SbeTemplateId() (templateId uint16) {
 }
 
 func (*TimeSeriesDefinition) SbeSchemaId() (schemaId uint16) {
-	return 0
+	return 118
 }
 
 func (*TimeSeriesDefinition) SbeSchemaVersion() (schemaVersion uint16) {
@@ -213,6 +213,10 @@ func (*TimeSeriesDefinition) SbeSchemaVersion() (schemaVersion uint16) {
 
 func (*TimeSeriesDefinition) SbeSemanticType() (semanticType []byte) {
 	return []byte("")
+}
+
+func (*TimeSeriesDefinition) SbeSemanticVersion() (semanticVersion string) {
+	return ""
 }
 
 func (*TimeSeriesDefinition) IdId() uint16 {
@@ -318,7 +322,7 @@ func (*TimeSeriesDefinitionLabels) ValueDeprecated() uint16 {
 }
 
 func (TimeSeriesDefinitionLabels) ValueCharacterEncoding() string {
-	return "ASCII"
+	return "UTF-8"
 }
 
 func (TimeSeriesDefinitionLabels) ValueHeaderLength() uint64 {

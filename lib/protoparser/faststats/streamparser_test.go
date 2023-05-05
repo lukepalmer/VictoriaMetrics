@@ -33,13 +33,14 @@ func (rows rowsByTime) Less(i, j int) bool {
 	return rows[i].metricRow.Timestamp < rows[j].metricRow.Timestamp
 }
 
-func TestParseStream(t *testing.T) {
+func run(t *testing.T, filename string) {
 	relabel.Init()
 	netstorage.Init([]string{"host1", "host2", "host3"}, 0)
 	common.StartUnmarshalWorkers()
 	defer common.StopUnmarshalWorkers()
 
-	file, err := os.Open("test_data.bin")
+	file, err := os.Open(filename)
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,4 +79,9 @@ func TestParseStream(t *testing.T) {
 			t.Errorf("Unexpected in i=%v: %v", i, rowStr)
 		}
 	}
+}
+
+func TestParseStream(t *testing.T) {
+	run(t, "test_data.bin")
+	run(t, "test_data_unframed.bin")
 }
