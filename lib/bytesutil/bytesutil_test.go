@@ -153,7 +153,7 @@ func TestResizeWithCopyNoOverallocate(t *testing.T) {
 
 func TestResizeWithCopyMayOverallocate(t *testing.T) {
 	for i := 0; i < 1000; i++ {
-		b := ResizeWithCopyMayOverallocate(nil, i)
+		b := ResizeWithCopyMayOverallocate[byte](nil, i)
 		if len(b) != i {
 			t.Fatalf("invalid b size; got %d; want %d", len(b), i)
 		}

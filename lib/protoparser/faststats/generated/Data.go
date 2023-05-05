@@ -158,7 +158,7 @@ func (*Data) SbeTemplateId() (templateId uint16) {
 }
 
 func (*Data) SbeSchemaId() (schemaId uint16) {
-	return 0
+	return 118
 }
 
 func (*Data) SbeSchemaVersion() (schemaVersion uint16) {
@@ -167,6 +167,10 @@ func (*Data) SbeSchemaVersion() (schemaVersion uint16) {
 
 func (*Data) SbeSemanticType() (semanticType []byte) {
 	return []byte("")
+}
+
+func (*Data) SbeSemanticVersion() (semanticVersion string) {
+	return ""
 }
 
 func (*DataPoints) TimeseriesIdId() uint16 {

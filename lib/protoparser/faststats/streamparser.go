@@ -2,6 +2,7 @@ package faststats
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -29,8 +30,9 @@ var (
 )
 
 const (
-	doRangeCheck  bool   = true
+	doRangeCheck  bool   = false
 	actingVersion uint16 = 0
+	framingSize          = 2
 )
 
 func ParseStream(at *auth.Token, reader io.Reader, callback func(data generated.Data, metricInfo []MetricInfo) error) error {
@@ -54,10 +56,22 @@ func ParseStream(at *auth.Token, reader io.Reader, callback func(data generated.
 }
 
 func (ctx *streamContext) Read() bool {
+	// temporary hack to work with both framed and non-framed protocols
+	var bytes []byte
+	if bytes, ctx.err = ctx.reader.Peek(framingSize); ctx.err != nil {
+		return false
+	}
+	// this could either be message framing or it could be the SBE blocklength, which we know to be zero
+	if binary.LittleEndian.Uint16(bytes) != 0 {
+		print("framing", binary.LittleEndian.Uint16(bytes))
+		// blocking IO is used throughout so framing may be discarded
+		if _, ctx.err = ctx.reader.Discard(framingSize); ctx.err != nil {
+			return false
+		}
+	}
 
 	readCalls.Inc()
 	if ctx.err = ctx.header.Decode(&ctx.sbe, ctx.reader, actingVersion); ctx.err != nil {
-
 		return false
 	}
 
@@ -65,7 +79,9 @@ func (ctx *streamContext) Read() bool {
 		if ctx.err = ctx.definition.Decode(&ctx.sbe, ctx.reader, actingVersion, ctx.header.BlockLength, doRangeCheck); ctx.err != nil {
 			return false
 		}
-		ctx.registerTimeSeries()
+		if ctx.err = ctx.registerTimeSeries(); ctx.err != nil {
+			return false
+		}
 	} else if ctx.header.TemplateId == dataSbeTemplateID {
 		uw := getUnmarshalWork()
 		uw.ctx = ctx
@@ -73,6 +89,8 @@ func (ctx *streamContext) Read() bool {
 		/* Safety rules for sharing metric names:
 		- the stream may only write elements once
 		- unmarshall work may only read elements that existed at the time this slice is assigned
+
+		Since the array backing appendOnlyMetricInfo is only be appended to, the contents of the slice visible right now is always safe for unserialized concurrent reads.
 		*/
 		uw.readOnlyMetricInfo = ctx.appendOnlyMetricInfo
 		// Decoding must happen within the stream context because we are doing (fast) direct buffer reads.
@@ -145,15 +163,28 @@ func (ctx *streamContext) reset() {
 	ctx.err = nil
 	ctx.callbackErr = nil
 	ctx.atLocal = nil
+	ctx.appendOnlyMetricInfo = nil
 }
 
-func (ctx *streamContext) registerTimeSeries() {
+func (ctx *streamContext) registerTimeSeries() error {
 	id := int(ctx.definition.Id)
-	ic := &ctx.ic
 
+	/* A slice of the array backing appendOnlyMetricNamesRaw will be shared for unsynchronized read-only access in another goroutine.
+	This is helpful for performance and allowable so long as elements that will be read (visible in the read-only slice) are never written after they are shared.
+
+	A straightforward way to accomplish this is to expect clients implementing this protocol to assign metrics to ids sequentially.
+	New definitions may then be appended without synchronization and without altering the apparent contents of a previously shared read-only slice.
+	*/
+	metricInfoLen := len(ctx.appendOnlyMetricInfo)
+	if id < metricInfoLen {
+		return fmt.Errorf("client illegally registered a non-sequential id of %d; expected %d", id, metricInfoLen)
+	}
+	ctx.appendOnlyMetricInfo = bytesutil.ResizeWithCopyMayOverallocate(ctx.appendOnlyMetricInfo, id+1)
+	metricInfo := &ctx.appendOnlyMetricInfo[id]
+
+	ic := &ctx.ic
 	ic.Labels = ic.Labels[:0]
 	ic.AddLabelBytes(nil, ctx.definition.Name[:])
-
 	for _, label := range ctx.definition.Labels {
 		ic.AddLabelBytes(label.Key[:], label.Value[:])
 	}
@@ -162,27 +193,11 @@ func (ctx *streamContext) registerTimeSeries() {
 	}
 	ic.SortLabelsIfNeeded()
 
-	/* A slice of the array backing appendOnlyMetricNamesRaw will be shared for unsynchronized read-only access in another goroutine.
-	This is helpful for performance and allowable so long as elements that will be read (visible in the read-only slice) are never written after they are shared.
-
-	A straightforward way to accomplish this is to expect clients implementing this protocol to assign metrics to ids sequentially.
-	New definitions may then be appended without synchronization and without altering the apparent contents of a previously shared read-only slice.
-
-	We can (more slowly) accomodate a non-sequential write by copying, as the backing store for the previously shared slice is not altered.
-	*/
-	if id < len(ctx.appendOnlyMetricInfo) {
-		// TODO: log warning for badly behaving client, or write to a stat
-		metricInfoCopy := make([]MetricInfo, len(ctx.appendOnlyMetricInfo))
-		copy(metricInfoCopy, ctx.appendOnlyMetricInfo)
-		ctx.appendOnlyMetricInfo = metricInfoCopy
-	}
-
-	ctx.appendOnlyMetricInfo = bytesutil.ResizeWithCopyMayOverallocate(ctx.appendOnlyMetricInfo, id+1)
-	metricInfo := &ctx.appendOnlyMetricInfo[id]
 	metricInfo.MetricNameRaw = storage.MarshalMetricNameRaw(nil, ctx.atLocal.AccountID, ctx.atLocal.ProjectID, ic.Labels)
 	// Assignment of a storage node during registration intentionally does not account for unavailable storage nodes because rerouting occurs later when a row is pushed inside the storage layer
 	metricInfo.StorageNodeIdx = ic.GetStorageNodeIdxRaw(metricInfo.MetricNameRaw)
 	metricInfo.AtLocal = ctx.atLocal
+	return nil
 }
 
 var (
