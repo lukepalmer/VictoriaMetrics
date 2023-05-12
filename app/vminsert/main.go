@@ -150,7 +150,7 @@ func main() {
 	}
 	if len(*fastStatsListenAddr) > 0 {
 		fastStatsServer = faststatsserver.MustStart(*fastStatsListenAddr, *fastStatsUseProxyProtocol, func(r io.Reader) error {
-			return faststats.InsertHandler(nil, r)
+			return faststats.InsertHandler(r)
 		})
 	}
 

@@ -35,14 +35,14 @@ const (
 	framingSize          = 2
 )
 
-func ParseStream(at *auth.Token, reader io.Reader, callback func(data generated.Data, metricInfo []MetricInfo) error) error {
+func ParseStream(reader io.Reader, callback func(data generated.Data, metricInfo []MetricInfo, at *auth.Token) error) error {
 
 	ctx := getStreamContext()
-	ctx.reader = bufio.NewReaderSize(reader, 64*1024)
-	ctx.atLocal = ctx.ic.GetLocalAuthToken(at)
-	ctx.atLocal.AccountID = 1 // TODO: hack
-	ctx.callback = callback
 	ctx.ic.Reset()
+	ctx.reader = bufio.NewReaderSize(reader, 64*1024)
+	ctx.at = ctx.ic.GetLocalAuthToken(nil)
+	ctx.at.Set(1, 0) // FIXME: implement an auth message
+	ctx.callback = callback
 	defer putStreamContext(ctx)
 
 	for ctx.Read() {
@@ -64,7 +64,6 @@ func (ctx *streamContext) Read() bool {
 	}
 	// this could either be message framing or it could be the SBE blocklength, which we know to be zero
 	if binary.LittleEndian.Uint16(bytes) != 0 {
-		print("framing", binary.LittleEndian.Uint16(bytes))
 		// blocking IO is used throughout so framing may be discarded
 		if _, ctx.err = ctx.reader.Discard(framingSize); ctx.err != nil {
 			return false
@@ -119,7 +118,6 @@ func (ctx *streamContext) Read() bool {
 type MetricInfo struct {
 	MetricNameRaw  []byte
 	StorageNodeIdx int
-	AtLocal        *auth.Token
 }
 
 type streamContext struct {
@@ -128,8 +126,8 @@ type streamContext struct {
 	header     generated.MessageHeader
 	definition generated.TimeSeriesDefinition
 	err        error
-	atLocal    *auth.Token
-	callback   func(data generated.Data, metricInfo []MetricInfo) error
+	at         *auth.Token
+	callback   func(data generated.Data, metricInfo []MetricInfo, at *auth.Token) error
 
 	/* The backing array may only be appended to.
 	This allows concurrent reads from a slice pointed to populated elements without synchronization. */
@@ -163,8 +161,9 @@ func (ctx *streamContext) reset() {
 	ctx.callback = nil
 	ctx.err = nil
 	ctx.callbackErr = nil
-	ctx.atLocal = nil
+	ctx.at = nil
 	ctx.appendOnlyMetricInfo = nil
+	ctx.ic.Reset()
 }
 
 func (ctx *streamContext) registerTimeSeries() error {
@@ -194,10 +193,9 @@ func (ctx *streamContext) registerTimeSeries() error {
 	}
 	ic.SortLabelsIfNeeded()
 
-	metricInfo.MetricNameRaw = storage.MarshalMetricNameRaw(nil, ctx.atLocal.AccountID, ctx.atLocal.ProjectID, ic.Labels)
+	metricInfo.MetricNameRaw = storage.MarshalMetricNameRaw(nil, ctx.at.AccountID, ctx.at.ProjectID, ic.Labels)
 	// Assignment of a storage node during registration intentionally does not account for unavailable storage nodes because rerouting occurs later when a row is pushed inside the storage layer
 	metricInfo.StorageNodeIdx = ic.GetStorageNodeIdxRaw(metricInfo.MetricNameRaw)
-	metricInfo.AtLocal = ctx.atLocal
 	return nil
 }
 
@@ -217,9 +215,11 @@ func getStreamContext() *streamContext {
 
 			return ctx
 		}
-		return &streamContext{
+		ctx := streamContext{
 			sbe: *generated.NewSbeGoMarshaller(),
 		}
+		ctx.reset()
+		return &ctx
 	}
 }
 
@@ -244,7 +244,7 @@ type unmarshalWork struct {
 
 func (uw *unmarshalWork) runCallback() {
 	ctx := uw.ctx
-	if err := ctx.callback(uw.data, uw.readOnlyMetricInfo); err != nil {
+	if err := ctx.callback(uw.data, uw.readOnlyMetricInfo, ctx.at); err != nil {
 		ctx.callbackErrLock.Lock()
 		if ctx.callbackErr == nil {
 			ctx.callbackErr = fmt.Errorf("error when processing imported data: %w", err)

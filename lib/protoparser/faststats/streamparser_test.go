@@ -9,6 +9,7 @@ import (
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/netstorage"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/relabel"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/auth"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/protoparser/common"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/protoparser/faststats/generated"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
@@ -48,15 +49,15 @@ func run(t *testing.T, filename string) {
 	reader := bufio.NewReader(file)
 
 	expected := []string{
-		`2 / AccountID=0, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=1, Value=1.000000)`,
-		`1 / AccountID=0, ProjectID=0, two{French="deux",Spanish="dos"} (Timestamp=2, Value=2.000000)`,
-		`2 / AccountID=0, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=3, Value=1.100000)`,
-		`2 / AccountID=0, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=4, Value=1.110000)`,
-		`1 / AccountID=0, ProjectID=0, two{French="deux",Spanish="dos"} (Timestamp=5, Value=2.200000)`,
+		`0 / AccountID=1, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=1, Value=1.000000)`,
+		`1 / AccountID=1, ProjectID=0, two{French="deux",Spanish="dos"} (Timestamp=2, Value=2.000000)`,
+		`0 / AccountID=1, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=3, Value=1.100000)`,
+		`0 / AccountID=1, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=4, Value=1.110000)`,
+		`1 / AccountID=1, ProjectID=0, two{French="deux",Spanish="dos"} (Timestamp=5, Value=2.200000)`,
 	}
 
 	rows := rowsByTime{}
-	callback := func(data generated.Data, metricInfos []MetricInfo) error {
+	callback := func(data generated.Data, metricInfos []MetricInfo, at *auth.Token) error {
 		for _, point := range data.Points {
 			row := rowInfo{
 				metricRow:      storage.MetricRow{MetricNameRaw: metricInfos[point.TimeseriesId].MetricNameRaw, Timestamp: DivRoundClosest(point.TimeEpochNs, 1000000), Value: point.Value},
@@ -66,7 +67,7 @@ func run(t *testing.T, filename string) {
 		return nil
 	}
 
-	err = ParseStream(nil, reader, callback)
+	err = ParseStream(reader, callback)
 	if err != nil {
 		t.Error(err)
 	}

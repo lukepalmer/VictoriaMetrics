@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTableOpenClose(t *testing.T) {
@@ -110,6 +111,8 @@ func TestTableCreateSnapshotAt(t *testing.T) {
 		tb.AddItems([][]byte{item})
 	}
 	tb.DebugFlush()
+	// Temporary hack: https://github.com/VictoriaMetrics/VictoriaMetrics/issues/4272
+	time.Sleep(time.Second * 5)
 
 	// Create multiple snapshots.
 	snapshot1 := path + "-test-snapshot1"

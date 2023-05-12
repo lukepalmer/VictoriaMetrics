@@ -17,11 +17,11 @@ var (
 	rowsPerInsert      = metrics.NewHistogram(`vm_rows_per_insert{type="FastStats"}`)
 )
 
-func InsertHandler(at *auth.Token, r io.Reader) error {
-	return parser.ParseStream(at, r, insertRows)
+func InsertHandler(r io.Reader) error {
+	return parser.ParseStream(r, insertRows)
 }
 
-func insertRows(data generated.Data, metricInfos []parser.MetricInfo) error {
+func insertRows(data generated.Data, metricInfos []parser.MetricInfo, at *auth.Token) error {
 	ic := netstorage.GetInsertCtx()
 	defer netstorage.PutInsertCtx(ic)
 	perTenantRows := make(map[auth.Token]int)
@@ -34,9 +34,9 @@ func insertRows(data generated.Data, metricInfos []parser.MetricInfo) error {
 		if err := ic.WriteDataPointExt(metricInfo.StorageNodeIdx, metricInfo.MetricNameRaw, parser.DivRoundClosest(point.TimeEpochNs, 1000000), point.Value); err != nil {
 			return err
 		}
-		perTenantRows[*metricInfo.AtLocal]++
 	}
 	rowsInserted.Add(rowsTotal)
+	perTenantRows[*at] += rowsTotal
 
 	rowsTenantInserted.MultiAdd(perTenantRows)
 	rowsPerInsert.Update(float64(rowsTotal))
