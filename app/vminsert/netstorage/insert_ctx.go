@@ -160,6 +160,18 @@ func (ctx *InsertCtx) FlushBufs() error {
 	return firstErr
 }
 
+// GetStorageNodeIdx returns storage node index for the given raw bytes
+//
+// The returned index must be passed to WriteDataPoint.
+func (ctx *InsertCtx) GetStorageNodeIdxRaw(buf []byte) int {
+	h := xxhash.Sum64(buf)
+	ctx.labelsBuf = buf
+
+	// Do not exclude unavailable storage nodes in order to properly account for rerouted rows in storageNode.push().
+	idx := ctx.snb.nodesHash.getNodeIdx(h, nil)
+	return idx
+}
+
 // GetStorageNodeIdx returns storage node index for the given at and labels.
 //
 // The returned index must be passed to WriteDataPoint.
@@ -177,12 +189,7 @@ func (ctx *InsertCtx) GetStorageNodeIdx(at *auth.Token, labels []prompb.Label) i
 		buf = marshalBytesFast(buf, label.Name)
 		buf = marshalBytesFast(buf, label.Value)
 	}
-	h := xxhash.Sum64(buf)
-	ctx.labelsBuf = buf
-
-	// Do not exclude unavailable storage nodes in order to properly account for rerouted rows in storageNode.push().
-	idx := ctx.snb.nodesHash.getNodeIdx(h, nil)
-	return idx
+	return ctx.GetStorageNodeIdxRaw(buf)
 }
 
 func marshalBytesFast(dst []byte, s []byte) []byte {

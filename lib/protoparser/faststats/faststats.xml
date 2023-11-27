@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="generated"
+                   id="118"
+                   version="0"
+                   description="FastStats Protocol"
+                   byteOrder="littleEndian">
+  <types>
+    <composite name="messageHeader" description="Message identifiers and length of message root.">
+      <type name="blockLength" primitiveType="uint16"/>
+      <type name="templateId" primitiveType="uint16"/>
+      <type name="schemaId" primitiveType="uint16"/>
+      <type name="version" primitiveType="uint16"/>
+    </composite>
+    <composite name="groupSizeEncoding" description="Repeating group dimensions.">
+      <type name="numInGroup" primitiveType="uint16"/>
+      <type name="blockLength" primitiveType="uint16"/>
+    </composite>
+    <composite name="varAsciiEncoding" description="Variable length ASCII String.">
+      <type name="length" primitiveType="uint16"/>
+      <type name="varData" primitiveType="uint8" characterEncoding="ASCII"/>
+    </composite>
+    <composite name="varStringEncoding">
+      <type name="length" primitiveType="uint16"/>
+      <type name="varData" primitiveType="uint8" characterEncoding="UTF-8"/>
+    </composite>
+    <type name="timeseriesId" primitiveType="uint32"/>
+    <type name="timeEpochNs" primitiveType="int64"/>
+    <type name="statValue" primitiveType="double"/>
+  </types>
+
+  <sbe:message name="TimeSeriesDefinition" id="0" description="Definition of a Time Series">
+    <field name="id" id="0" type="timeseriesId"/>
+    <group name="labels" id="1" dimensionType="groupSizeEncoding">
+      <data name="key" id="0" type="varAsciiEncoding"/>
+      <data name="value" id="1" type="varStringEncoding"/>
+    </group>
+    <data name="name" id="2" type="varAsciiEncoding"/>
+  </sbe:message>
+
+  <sbe:message name="Data" id="1" description="Data Points">
+    <group name="points" id="0" dimensionType="groupSizeEncoding">
+      <field name="timeseriesId" id="0" type="timeseriesId"/>
+      <field name="timeEpochNs" id="1" type="timeEpochNs"/>
+      <field name="value" id="2" type="statValue"/>
+    </group>
+  </sbe:message>
+</sbe:messageSchema>
+

@@ -16,6 +16,7 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/clusternative"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/csvimport"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/datadog"
+	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/faststats"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/graphite"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/influx"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/native"
@@ -36,6 +37,7 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/httpserver"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/influxutils"
 	clusternativeserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/clusternative"
+	faststatsserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/faststats"
 	graphiteserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/graphite"
 	influxserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/influx"
 	opentsdbserver "github.com/VictoriaMetrics/VictoriaMetrics/lib/ingestserver/opentsdb"
@@ -69,6 +71,9 @@ var (
 		"See also -opentsdbHTTPListenAddr.useProxyProtocol")
 	opentsdbHTTPUseProxyProtocol = flag.Bool("opentsdbHTTPListenAddr.useProxyProtocol", false, "Whether to use proxy protocol for connections accepted "+
 		"at -opentsdbHTTPListenAddr . See https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt")
+	fastStatsListenAddr       = flag.String("fastStatsListenAddr", "", "TCP address to listen for FastStats. Usually :5853 must be set. Doesn't work if empty")
+	fastStatsUseProxyProtocol = flag.Bool("fastStats.useProxyProtocol", false, "Whether to use proxy protocol for connections accepted "+
+		"at -fastStatsListenAddr . See https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt")
 	httpListenAddr   = flag.String("httpListenAddr", ":8480", "Address to listen for http connections. See also -httpListenAddr.useProxyProtocol")
 	useProxyProtocol = flag.Bool("httpListenAddr.useProxyProtocol", false, "Whether to use proxy protocol for connections accepted at -httpListenAddr . "+
 		"See https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt . "+
@@ -86,6 +91,7 @@ var (
 	influxServer        *influxserver.Server
 	opentsdbServer      *opentsdbserver.Server
 	opentsdbhttpServer  *opentsdbhttpserver.Server
+	fastStatsServer     *faststatsserver.Server
 )
 
 func main() {
@@ -145,6 +151,11 @@ func main() {
 	if len(*opentsdbHTTPListenAddr) > 0 {
 		opentsdbhttpServer = opentsdbhttpserver.MustStart(*opentsdbHTTPListenAddr, *opentsdbHTTPUseProxyProtocol, opentsdbhttp.InsertHandler)
 	}
+	if len(*fastStatsListenAddr) > 0 {
+		fastStatsServer = faststatsserver.MustStart(*fastStatsListenAddr, *fastStatsUseProxyProtocol, func(r io.Reader) error {
+			return faststats.InsertHandler(r)
+		})
+	}
 
 	go func() {
 		httpserver.Serve(*httpListenAddr, *useProxyProtocol, requestHandler)
@@ -175,6 +186,10 @@ func main() {
 	if len(*opentsdbHTTPListenAddr) > 0 {
 		opentsdbhttpServer.MustStop()
 	}
+	if len(*fastStatsListenAddr) > 0 {
+		fastStatsServer.MustStop()
+	}
+
 	common.StopUnmarshalWorkers()
 
 	logger.Infof("shutting down neststorage...")
