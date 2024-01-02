@@ -2,7 +2,6 @@ package faststats
 
 import (
 	"errors"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -37,7 +36,7 @@ type Server struct {
 // See https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
 //
 // MustStop must be called on the returned server when it is no longer needed.
-func MustStart(addr string, useProxyProtocol bool, insertHandler func(r io.Reader) error) *Server {
+func MustStart(addr string, useProxyProtocol bool, insertHandler func(c net.Conn) error) *Server {
 	logger.Infof("starting TCP FastStats server at %q", addr)
 	lnTCP, err := netutil.NewTCPListener("FastStats", addr, useProxyProtocol, nil)
 	if err != nil {
@@ -69,7 +68,7 @@ func (s *Server) MustStop() {
 	logger.Infof("TCP FastStats servers at %q have been stopped", s.addr)
 }
 
-func (s *Server) serveTCP(insertHandler func(r io.Reader) error) {
+func (s *Server) serveTCP(insertHandler func(c net.Conn) error) {
 	var wg sync.WaitGroup
 	for {
 		c, err := s.lnTCP.Accept()

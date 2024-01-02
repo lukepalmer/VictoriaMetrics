@@ -1,8 +1,8 @@
 package faststats
 
 import (
-	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"sort"
 	"testing"
@@ -40,13 +40,14 @@ func run(t *testing.T, filename string) {
 	common.StartUnmarshalWorkers()
 	defer common.StopUnmarshalWorkers()
 
-	file, err := os.Open(filename)
+	data, err := os.ReadFile(filename)
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	reader := bufio.NewReader(file)
+	server, client := net.Pipe()
+	client.Write(data)
+	client.Close()
 
 	expected := []string{
 		`0 / AccountID=1, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=1, Value=1.000000)`,
@@ -67,7 +68,7 @@ func run(t *testing.T, filename string) {
 		return nil
 	}
 
-	err = ParseStream(reader, callback)
+	err = ParseStream(server, callback)
 	if err != nil {
 		t.Error(err)
 	}

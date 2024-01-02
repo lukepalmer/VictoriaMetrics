@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="generated"
+                   id="118"
+                   version="1"
+                   description="Time Machine Publisher Protocol"
+                   byteOrder="littleEndian">
+  <types>
+    <composite name="messageHeader" description="Message identifiers and length of message root.">
+      <type name="blockLength" primitiveType="uint16"/>
+      <!-- templateId is required and selects which sbe:message data
+           refers to. It is automatically populated when the message
+           is written. -->
+      <type name="templateId" primitiveType="uint16"/>
+      <!-- 'schemaId' identifies this specification as a whole. It
+           should be populated with the 'id' field in the
+           sbe:messageSchema element, but this is broken in the OCaml
+           implementation and must be coded manually. -->
+      <type name="schemaId" primitiveType="uint16"/>
+      <!-- 'version' identifies the version of this specification. It
+           should be populated with the 'version' field in the
+           sbe:messageSchema element, but this is broken in the OCaml
+           implementation and must be coded manually. -->
+      <type name="version" primitiveType="uint16"/>
+    </composite>
+    <composite name="groupSizeEncoding" description="Repeating group dimensions.">
+      <type name="numInGroup" primitiveType="uint16"/>
+      <type name="blockLength" primitiveType="uint16"/>
+    </composite>
+    <composite name="varStringEncoding">
+      <type name="length" primitiveType="uint16"/>
+      <type name="varData" primitiveType="uint8" characterEncoding="UTF-8"/>
+    </composite>
+    <type name="sequenceNumber" primitiveType="uint64"/>
+    <type name="timeseriesId" primitiveType="uint32"/>
+    <type name="timeEpochNs" primitiveType="int64"/>
+    <type name="statValue" primitiveType="double"/>
+    <type name="accountId" primitiveType="uint32"/>
+    <type name="projectId" primitiveType="uint32"/>
+  </types>
+
+  <sbe:message name="TimeSeriesDefinition" id="0" description="Definition of a Time Series">
+    <field name="id" id="0" type="timeseriesId"/>
+    <group name="labels" id="1" dimensionType="groupSizeEncoding">
+      <data name="key" id="0" type="varStringEncoding"/>
+      <data name="value" id="1" type="varStringEncoding"/>
+    </group>
+    <data name="name" id="2" type="varStringEncoding"/>
+  </sbe:message>
+
+  <sbe:message name="Data" id="1" description="Data Points">
+    <field name="sequenceNumber" id="0" type="sequenceNumber" sinceVersion="1"/>
+    <group name="points" id="1" dimensionType="groupSizeEncoding">
+      <field name="timeseriesId" id="0" type="timeseriesId"/>
+      <field name="timeEpochNs" id="1" type="timeEpochNs"/>
+      <field name="value" id="2" type="statValue"/>
+    </group>
+  </sbe:message>
+
+  <sbe:message name="Authentication" id="2" description="A VictoriaMetrics Authentication token">
+    <field name="accountId" id="0" type="accountId"/>
+    <field name="projectId" id="1" type="projectId"/>
+  </sbe:message>
+
+</sbe:messageSchema>

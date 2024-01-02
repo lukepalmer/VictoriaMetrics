@@ -10,7 +10,8 @@ import (
 )
 
 type Data struct {
-	Points []DataPoints
+	SequenceNumber uint64
+	Points         []DataPoints
 }
 type DataPoints struct {
 	TimeseriesId uint32
@@ -23,6 +24,9 @@ func (d *Data) Encode(_m *SbeGoMarshaller, _w io.Writer, doRangeCheck bool) erro
 		if err := d.RangeCheck(d.SbeSchemaVersion(), d.SbeSchemaVersion()); err != nil {
 			return err
 		}
+	}
+	if err := _m.WriteUint64(_w, d.SequenceNumber); err != nil {
+		return err
 	}
 	var PointsNumInGroup uint16 = uint16(len(d.Points))
 	if err := _m.WriteUint16(_w, PointsNumInGroup); err != nil {
@@ -41,6 +45,13 @@ func (d *Data) Encode(_m *SbeGoMarshaller, _w io.Writer, doRangeCheck bool) erro
 }
 
 func (d *Data) Decode(_m *SbeGoMarshaller, _r io.Reader, actingVersion uint16, blockLength uint16, doRangeCheck bool) error {
+	if !d.SequenceNumberInActingVersion(actingVersion) {
+		d.SequenceNumber = d.SequenceNumberNullValue()
+	} else {
+		if err := _m.ReadUint64(_r, &d.SequenceNumber); err != nil {
+			return err
+		}
+	}
 	if actingVersion > d.SbeSchemaVersion() && blockLength > d.SbeBlockLength() {
 		io.CopyN(ioutil.Discard, _r, int64(blockLength-d.SbeBlockLength()))
 	}
@@ -73,6 +84,11 @@ func (d *Data) Decode(_m *SbeGoMarshaller, _r io.Reader, actingVersion uint16, b
 }
 
 func (d *Data) RangeCheck(actingVersion uint16, schemaVersion uint16) error {
+	if d.SequenceNumberInActingVersion(actingVersion) {
+		if d.SequenceNumber < d.SequenceNumberMinValue() || d.SequenceNumber > d.SequenceNumberMaxValue() {
+			return fmt.Errorf("Range check failed on d.SequenceNumber (%v < %v > %v)", d.SequenceNumberMinValue(), d.SequenceNumber, d.SequenceNumberMaxValue())
+		}
+	}
 	for _, prop := range d.Points {
 		if err := prop.RangeCheck(actingVersion, schemaVersion); err != nil {
 			return err
@@ -150,7 +166,7 @@ func DataPointsInit(d *DataPoints) {
 }
 
 func (*Data) SbeBlockLength() (blockLength uint16) {
-	return 0
+	return 8
 }
 
 func (*Data) SbeTemplateId() (templateId uint16) {
@@ -162,7 +178,7 @@ func (*Data) SbeSchemaId() (schemaId uint16) {
 }
 
 func (*Data) SbeSchemaVersion() (schemaVersion uint16) {
-	return 0
+	return 1
 }
 
 func (*Data) SbeSemanticType() (semanticType []byte) {
@@ -171,6 +187,48 @@ func (*Data) SbeSemanticType() (semanticType []byte) {
 
 func (*Data) SbeSemanticVersion() (semanticVersion string) {
 	return ""
+}
+
+func (*Data) SequenceNumberId() uint16 {
+	return 0
+}
+
+func (*Data) SequenceNumberSinceVersion() uint16 {
+	return 1
+}
+
+func (d *Data) SequenceNumberInActingVersion(actingVersion uint16) bool {
+	return actingVersion >= d.SequenceNumberSinceVersion()
+}
+
+func (*Data) SequenceNumberDeprecated() uint16 {
+	return 0
+}
+
+func (*Data) SequenceNumberMetaAttribute(meta int) string {
+	switch meta {
+	case 1:
+		return ""
+	case 2:
+		return ""
+	case 3:
+		return ""
+	case 4:
+		return "required"
+	}
+	return ""
+}
+
+func (*Data) SequenceNumberMinValue() uint64 {
+	return 0
+}
+
+func (*Data) SequenceNumberMaxValue() uint64 {
+	return math.MaxUint64 - 1
+}
+
+func (*Data) SequenceNumberNullValue() uint64 {
+	return math.MaxUint64
 }
 
 func (*DataPoints) TimeseriesIdId() uint16 {
@@ -300,7 +358,7 @@ func (*DataPoints) ValueNullValue() float64 {
 }
 
 func (*Data) PointsId() uint16 {
-	return 0
+	return 1
 }
 
 func (*Data) PointsSinceVersion() uint16 {
@@ -320,5 +378,5 @@ func (*DataPoints) SbeBlockLength() (blockLength uint) {
 }
 
 func (*DataPoints) SbeSchemaVersion() (schemaVersion uint16) {
-	return 0
+	return 1
 }

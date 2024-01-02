@@ -152,8 +152,8 @@ func main() {
 		opentsdbhttpServer = opentsdbhttpserver.MustStart(*opentsdbHTTPListenAddr, *opentsdbHTTPUseProxyProtocol, opentsdbhttp.InsertHandler)
 	}
 	if len(*fastStatsListenAddr) > 0 {
-		fastStatsServer = faststatsserver.MustStart(*fastStatsListenAddr, *fastStatsUseProxyProtocol, func(r io.Reader) error {
-			return faststats.InsertHandler(r)
+		fastStatsServer = faststatsserver.MustStart(*fastStatsListenAddr, *fastStatsUseProxyProtocol, func(c net.Conn) error {
+			return faststats.InsertHandler(c)
 		})
 	}
 

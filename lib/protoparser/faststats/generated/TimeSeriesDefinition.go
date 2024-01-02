@@ -116,10 +116,8 @@ func (t *TimeSeriesDefinition) RangeCheck(actingVersion uint16, schemaVersion ui
 			return err
 		}
 	}
-	for idx, ch := range t.Name {
-		if ch > 127 {
-			return fmt.Errorf("t.Name[%d]=%d failed ASCII validation", idx, ch)
-		}
+	if !utf8.Valid(t.Name[:]) {
+		return errors.New("t.Name failed UTF-8 validation")
 	}
 	return nil
 }
@@ -180,10 +178,8 @@ func (t *TimeSeriesDefinitionLabels) Decode(_m *SbeGoMarshaller, _r io.Reader, a
 }
 
 func (t *TimeSeriesDefinitionLabels) RangeCheck(actingVersion uint16, schemaVersion uint16) error {
-	for idx, ch := range t.Key {
-		if ch > 127 {
-			return fmt.Errorf("t.Key[%d]=%d failed ASCII validation", idx, ch)
-		}
+	if !utf8.Valid(t.Key[:]) {
+		return errors.New("t.Key failed UTF-8 validation")
 	}
 	if !utf8.Valid(t.Value[:]) {
 		return errors.New("t.Value failed UTF-8 validation")
@@ -208,7 +204,7 @@ func (*TimeSeriesDefinition) SbeSchemaId() (schemaId uint16) {
 }
 
 func (*TimeSeriesDefinition) SbeSchemaVersion() (schemaVersion uint16) {
-	return 0
+	return 1
 }
 
 func (*TimeSeriesDefinition) SbeSemanticType() (semanticType []byte) {
@@ -288,7 +284,7 @@ func (*TimeSeriesDefinitionLabels) KeyDeprecated() uint16 {
 }
 
 func (TimeSeriesDefinitionLabels) KeyCharacterEncoding() string {
-	return "ASCII"
+	return "UTF-8"
 }
 
 func (TimeSeriesDefinitionLabels) KeyHeaderLength() uint64 {
@@ -350,7 +346,7 @@ func (*TimeSeriesDefinitionLabels) SbeBlockLength() (blockLength uint) {
 }
 
 func (*TimeSeriesDefinitionLabels) SbeSchemaVersion() (schemaVersion uint16) {
-	return 0
+	return 1
 }
 
 func (*TimeSeriesDefinition) NameMetaAttribute(meta int) string {
@@ -380,7 +376,7 @@ func (*TimeSeriesDefinition) NameDeprecated() uint16 {
 }
 
 func (TimeSeriesDefinition) NameCharacterEncoding() string {
-	return "ASCII"
+	return "UTF-8"
 }
 
 func (TimeSeriesDefinition) NameHeaderLength() uint64 {

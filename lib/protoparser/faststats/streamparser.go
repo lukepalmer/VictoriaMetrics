@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-
+	"net"
 	"sync"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/netstorage"
@@ -29,17 +29,17 @@ var (
 
 const (
 	doRangeCheck  bool   = false
-	actingVersion uint16 = 0
+	actingVersion uint16 = 1
 	framingSize          = 2
 )
 
-func ParseStream(reader io.Reader, callback func(data generated.Data, metricInfo []MetricInfo, at *auth.Token) error) error {
+func ParseStream(conn net.Conn, callback func(data generated.Data, metricInfo []MetricInfo, at *auth.Token) error) error {
 
 	ctx := getStreamContext()
 	ctx.ic.Reset()
-	ctx.reader = bufio.NewReaderSize(reader, 64*1024)
+	ctx.reader = bufio.NewReaderSize(conn, 64*1024)
 	ctx.at = ctx.ic.GetLocalAuthToken(nil)
-	ctx.at.Set(1, 0) // FIXME: implement an auth message
+	ctx.at.Set(1, 0) // FIXME: remove after staging
 	ctx.callback = callback
 	defer putStreamContext(ctx)
 
@@ -67,12 +67,17 @@ func (ctx *streamContext) Read() bool {
 	}
 
 	if ctx.header.TemplateId == ctx.definition.SbeTemplateId() {
-		if ctx.err = ctx.definition.Decode(&ctx.sbe, ctx.reader, actingVersion, ctx.header.BlockLength, doRangeCheck); ctx.err != nil {
+		if ctx.err = ctx.definition.Decode(&ctx.sbe, ctx.reader, ctx.header.Version, ctx.header.BlockLength, doRangeCheck); ctx.err != nil {
 			return false
 		}
 		if ctx.err = ctx.registerTimeSeries(); ctx.err != nil {
 			return false
 		}
+	} else if ctx.header.TemplateId == ctx.auth.SbeTemplateId() {
+		if ctx.err = ctx.auth.Decode(&ctx.sbe, ctx.reader, ctx.header.Version, ctx.header.BlockLength, doRangeCheck); ctx.err != nil {
+			return false
+		}
+		ctx.at.Set(ctx.auth.AccountId, ctx.auth.ProjectId)
 	} else if ctx.header.TemplateId == dataSbeTemplateID {
 		uw := getUnmarshalWork()
 		uw.ctx = ctx
@@ -85,16 +90,20 @@ func (ctx *streamContext) Read() bool {
 		*/
 		uw.readOnlyMetricInfo = ctx.appendOnlyMetricInfo
 		// Decoding must happen within the stream context because we are doing (fast) direct buffer reads.
-		if ctx.err = uw.data.Decode(&ctx.sbe, ctx.reader, actingVersion, ctx.header.BlockLength, doRangeCheck); ctx.err != nil {
+		if ctx.err = uw.data.Decode(&ctx.sbe, ctx.reader, ctx.header.Version, ctx.header.BlockLength, doRangeCheck); ctx.err != nil {
 			return false
 		}
+		if uw.data.SequenceNumberInActingVersion(ctx.header.Version) {
+
+		}
+
 		ctx.wg.Add(1)
 		common.ScheduleUnmarshalWork(uw)
 	}
 
 	if ctx.Error() != nil {
 		readErrors.Inc()
-		ctx.err = fmt.Errorf("cannot read Time Machine protocol data: %w", ctx.err)
+		ctx.err = fmt.Errorf("cannot read FastStats protocol data: %w", ctx.err)
 		return false
 	}
 	if ctx.hasCallbackError() {
@@ -114,6 +123,8 @@ type streamContext struct {
 	sbe        generated.SbeGoMarshaller
 	header     generated.MessageHeader
 	definition generated.TimeSeriesDefinition
+	auth       generated.Authentication
+	ack        generated.Acknowledgement
 	err        error
 	at         *auth.Token
 	callback   func(data generated.Data, metricInfo []MetricInfo, at *auth.Token) error
@@ -240,7 +251,6 @@ func (uw *unmarshalWork) runCallback() {
 
 // Unmarshal implements common.UnmarshalWork
 func (uw *unmarshalWork) Unmarshal() {
-
 	nPoints := len(uw.data.Points)
 	rowsRead.Add(nPoints)
 	uw.runCallback()

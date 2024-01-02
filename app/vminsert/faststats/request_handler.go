@@ -1,7 +1,7 @@
 package faststats
 
 import (
-	"io"
+	"net"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/netstorage"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/auth"
@@ -17,8 +17,8 @@ var (
 	rowsPerInsert      = metrics.NewHistogram(`vm_rows_per_insert{type="FastStats"}`)
 )
 
-func InsertHandler(r io.Reader) error {
-	return parser.ParseStream(r, insertRows)
+func InsertHandler(c net.Conn) error {
+	return parser.ParseStream(c, insertRows)
 }
 
 func insertRows(data generated.Data, metricInfos []parser.MetricInfo, at *auth.Token) error {
