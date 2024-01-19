@@ -95,6 +95,7 @@ func (ctx *streamContext) Read() bool {
 			return false
 		}
 		if uw.data.SequenceNumberInActingVersion(ctx.header.Version) {
+			ctx.sbe.WriteUint16(ctx.writer, ctx.header.BlockLength+ctx.ack.SbeBlockLength()) // framing
 			ctx.ack.SequenceNumber = uw.data.SequenceNumber
 			ctx.header.BlockLength = ctx.ack.SbeBlockLength()
 			ctx.header.SchemaId = ctx.ack.SbeSchemaId()

@@ -2,6 +2,7 @@ package faststats
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"reflect"
@@ -75,6 +76,7 @@ func run(t *testing.T, filename string, expectedAcks []int) {
 		header := generated.SbeGoMessageHeader{}
 		ack := generated.Acknowledgement{}
 		for {
+			io.CopyN(io.Discard, client, 2) // discard framing
 			header.Decode(sbe, client)
 			ack.Decode(sbe, client, ack.SbeSchemaVersion(), ack.SbeBlockLength(), true)
 			acks <- int(ack.SequenceNumber)
