@@ -38,6 +38,7 @@ func ParseStream(conn net.Conn, callback func(data generated.Data, metricInfo []
 	ctx := getStreamContext()
 	ctx.ic.Reset()
 	ctx.reader = bufio.NewReaderSize(conn, 64*1024)
+	ctx.writer = bufio.NewWriter(conn)
 	ctx.at = ctx.ic.GetLocalAuthToken(nil)
 	ctx.at.Set(1, 0) // FIXME: remove after staging
 	ctx.callback = callback
@@ -62,7 +63,7 @@ func (ctx *streamContext) Read() bool {
 		return false
 	}
 
-	if ctx.err = ctx.header.Decode(&ctx.sbe, ctx.reader, actingVersion); ctx.err != nil {
+	if ctx.err = ctx.header.Decode(&ctx.sbe, ctx.reader); ctx.err != nil {
 		return false
 	}
 
@@ -94,7 +95,17 @@ func (ctx *streamContext) Read() bool {
 			return false
 		}
 		if uw.data.SequenceNumberInActingVersion(ctx.header.Version) {
+			ctx.ack.SequenceNumber = uw.data.SequenceNumber
+			ctx.header.BlockLength = ctx.ack.SbeBlockLength()
+			ctx.header.SchemaId = ctx.ack.SbeSchemaId()
+			ctx.header.TemplateId = ctx.ack.SbeTemplateId()
+			ctx.header.Version = ctx.ack.SbeSchemaVersion()
+			ctx.header.Encode(&ctx.sbe, ctx.writer)
+			ctx.ack.Encode(&ctx.sbe, ctx.writer, doRangeCheck)
 
+			if ctx.err = ctx.writer.Flush(); ctx.err != nil {
+				return false
+			}
 		}
 
 		ctx.wg.Add(1)
@@ -120,8 +131,9 @@ type MetricInfo struct {
 
 type streamContext struct {
 	reader     *bufio.Reader
+	writer     *bufio.Writer
 	sbe        generated.SbeGoMarshaller
-	header     generated.MessageHeader
+	header     generated.SbeGoMessageHeader
 	definition generated.TimeSeriesDefinition
 	auth       generated.Authentication
 	ack        generated.Acknowledgement
@@ -158,6 +170,7 @@ func (ctx *streamContext) hasCallbackError() bool {
 
 func (ctx *streamContext) reset() {
 	ctx.reader = nil
+	ctx.writer = nil
 	ctx.callback = nil
 	ctx.err = nil
 	ctx.callbackErr = nil

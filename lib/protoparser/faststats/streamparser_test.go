@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vminsert/netstorage"
@@ -34,22 +36,13 @@ func (rows rowsByTime) Less(i, j int) bool {
 	return rows[i].metricRow.Timestamp < rows[j].metricRow.Timestamp
 }
 
-func run(t *testing.T, filename string) {
+func run(t *testing.T, filename string, expectedAcks []int) {
 	relabel.Init()
 	netstorage.Init([]string{"host1", "host2", "host3"}, 0)
 	common.StartUnmarshalWorkers()
 	defer common.StopUnmarshalWorkers()
 
-	data, err := os.ReadFile(filename)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-	server, client := net.Pipe()
-	client.Write(data)
-	client.Close()
-
-	expected := []string{
+	expectedData := []string{
 		`0 / AccountID=1, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=1, Value=1.000000)`,
 		`1 / AccountID=1, ProjectID=0, two{French="deux",Spanish="dos"} (Timestamp=2, Value=2.000000)`,
 		`0 / AccountID=1, ProjectID=0, one{French="un",Spanish="uno"} (Timestamp=3, Value=1.100000)`,
@@ -67,27 +60,63 @@ func run(t *testing.T, filename string) {
 		}
 		return nil
 	}
-
-	err = ParseStream(server, callback)
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	// for deterministic test results because unmarshalling is concurrent
+	server, client := net.Pipe()
+
+	go func() {
+		client.Write(data)
+	}()
+	acks := make(chan int, 10)
+	go func() {
+		sbe := generated.NewSbeGoMarshaller()
+		header := generated.SbeGoMessageHeader{}
+		ack := generated.Acknowledgement{}
+		for {
+			header.Decode(sbe, client)
+			ack.Decode(sbe, client, ack.SbeSchemaVersion(), ack.SbeBlockLength(), true)
+			acks <- int(ack.SequenceNumber)
+		}
+	}()
+	var serverWait sync.WaitGroup
+	serverWait.Add(1)
+	go func() {
+		streamErr := ParseStream(server, callback)
+		if streamErr != nil {
+			t.Error(streamErr)
+		}
+		serverWait.Done()
+	}()
+
+	// sort for deterministic test results because unmarshalling is concurrent
 	sortedRows := rowsByTime{}
-	close(rows)
-	for row := range rows {
-		sortedRows = append(sortedRows, row)
+	for range expectedData {
+		sortedRows = append(sortedRows, <-rows)
 	}
 	sort.Sort(sortedRows)
+	sortedAcks := []int{}
+	for range expectedAcks {
+		sortedAcks = append(sortedAcks, <-acks)
+	}
+	sort.Ints(sortedAcks)
+	if !reflect.DeepEqual(expectedAcks, sortedAcks) {
+		t.Errorf("Unexpected acks: expected=%v, received=%v", expectedAcks, sortedAcks)
+	}
 
 	for i, row := range sortedRows {
 		rowStr := row.String()
-		if expected[i] != rowStr {
+		if expectedData[i] != rowStr {
 			t.Errorf("Unexpected in i=%v: %v", i, rowStr)
 		}
 	}
+
+	client.Close()
+	serverWait.Wait()
 }
 
 func TestParseStream(t *testing.T) {
-	run(t, "test_data.bin")
+	run(t, "test_data_v0.bin", []int{})
+	run(t, "test_data_v1.bin", []int{0, 1})
 }
