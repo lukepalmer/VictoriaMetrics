@@ -2,7 +2,6 @@ package faststats
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"reflect"
@@ -75,8 +74,15 @@ func run(t *testing.T, filename string, expectedAcks []int) {
 		sbe := generated.NewSbeGoMarshaller()
 		header := generated.SbeGoMessageHeader{}
 		ack := generated.Acknowledgement{}
+		expectedAckMessageSize := ack.SbeBlockLength() + 8 // 8 for header
+		var framing uint16
 		for {
-			io.CopyN(io.Discard, client, 2) // discard framing
+			if sbe.ReadUint16(client, &framing) != nil {
+				break // EOF
+			}
+			if framing != expectedAckMessageSize {
+				t.Errorf("Framed message size is %v but expected %v", framing, expectedAckMessageSize)
+			}
 			header.Decode(sbe, client)
 			ack.Decode(sbe, client, ack.SbeSchemaVersion(), ack.SbeBlockLength(), true)
 			acks <- int(ack.SequenceNumber)

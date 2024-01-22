@@ -31,6 +31,7 @@ const (
 	doRangeCheck  bool   = false
 	actingVersion uint16 = 1
 	framingSize          = 2
+	sbeHeaderSize        = 8
 )
 
 func ParseStream(conn net.Conn, callback func(data generated.Data, metricInfo []MetricInfo, at *auth.Token) error) error {
@@ -95,15 +96,21 @@ func (ctx *streamContext) Read() bool {
 			return false
 		}
 		if uw.data.SequenceNumberInActingVersion(ctx.header.Version) {
-			ctx.sbe.WriteUint16(ctx.writer, ctx.header.BlockLength+ctx.ack.SbeBlockLength()) // framing
+			// framing
+			if ctx.err = ctx.sbe.WriteUint16(ctx.writer, ctx.ack.SbeBlockLength()+sbeHeaderSize); ctx.err != nil {
+				return false
+			}
 			ctx.ack.SequenceNumber = uw.data.SequenceNumber
 			ctx.header.BlockLength = ctx.ack.SbeBlockLength()
 			ctx.header.SchemaId = ctx.ack.SbeSchemaId()
 			ctx.header.TemplateId = ctx.ack.SbeTemplateId()
 			ctx.header.Version = ctx.ack.SbeSchemaVersion()
-			ctx.header.Encode(&ctx.sbe, ctx.writer)
-			ctx.ack.Encode(&ctx.sbe, ctx.writer, doRangeCheck)
-
+			if ctx.err = ctx.header.Encode(&ctx.sbe, ctx.writer); ctx.err != nil {
+				return false
+			}
+			if ctx.err = ctx.ack.Encode(&ctx.sbe, ctx.writer, doRangeCheck); ctx.err != nil {
+				return false
+			}
 			if ctx.err = ctx.writer.Flush(); ctx.err != nil {
 				return false
 			}
